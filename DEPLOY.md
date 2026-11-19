@@ -47,5 +47,25 @@ The `accounts` tab still holds the old password salts and hashes (columns **G** 
 
 Run it only after the new version is deployed.
 
+## Branches / warehouses
+Each branch has its own Google Sheet with the same tabs (PRODUCTS, RR, DR, RESERVATIONS, CONSUMABLES, ASSEMBLY, PENDING APROVAL, STOCKS):
+
+| Branch | Google Sheet | Key in `Code.gs` |
+|---|---|---|
+| Manila Branch | INVENTORY SYSTEM - TRADING - MANILA BRANCH (`1l2tvgEs…`) | `manila` (HOME) |
+| Cebu Branch | INVENTORY SYSTEM - TRADING - CEBU BRANCH (`1E-cTYqi…`) | `cebu` |
+
+- **Switching branches:** use the **Branch / Warehouse** selector at the top of the sidebar. Stock, transactions, approvals and downloads all apply to the selected branch only.
+- **Users are shared:** the user list is the ACCOUNTS tab in the **Manila** sheet. The Cebu sheet has no ACCOUNTS tab.
+- **Branch access:** admins set access on the **Users** page (Manila / Cebu / All branches). The setting is stored in ACCOUNTS column **I** (`branches`), for example `manila`, `cebu` or `manila,cebu`.
+  - If the column is empty, the user gets Manila only.
+  - Admins always see every branch.
+  - New users start as viewers with Manila access.
+- **Separate catalogs:** each branch has its own products and opening stock. Cebu started with the same 711 products and an opening stock of 0. Adding a product in one branch doesn't add it to the other.
+- **Adding another branch later:**
+  1. Copy a branch sheet in Drive and empty its transaction tabs.
+  2. Add a line to `BRANCHES` in `Code.gs`, for example `davao: {name: 'Davao Branch', id: '<sheet id>'}`.
+  3. Redeploy.
+
 ## Notes
 - The old `doPost` JSON endpoint has been removed. Everything goes through `google.script.run`.

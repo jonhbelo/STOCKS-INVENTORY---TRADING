@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RPI Inventory System v1.2</title>
+<title>RPI Inventory System v1.3</title>
 <style>
 :root{--bg:#0d1017;--side:#131823;--card:#161b27;--tx:#f1f3f7;--mut:#8b93a5;--bd:#252b3a;--ac:#6b8cff;--ok:#34d399;--lo:#fbbf24;--neg:#f87171;--wm:.05;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
 :root[data-theme="light"]{--bg:#eef0f5;--side:#fff;--card:#fff;--tx:#161a24;--mut:#667085;--bd:#dde1ea;--ac:#3b5bdb;--ok:#059669;--lo:#b45309;--neg:#dc2626;--wm:.07;color-scheme:light}
@@ -21,6 +21,11 @@ aside{width:300px;flex:none;background:var(--side);border-right:1px solid var(--
 .foot .r{display:flex;justify-content:space-between;align-items:center}
 .foot .g{color:var(--ok)}.foot .s{color:var(--mut);font-size:12px;margin-top:6px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ok);margin-right:6px}
+.whs{margin:-6px 0 14px}.whs label{display:block;font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--mut);margin:0 0 5px 4px}
+.whs select,.whs .one{width:100%;background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:9px;padding:10px 12px;font:inherit;font-weight:600}
+.whs select{cursor:pointer}.whs .one{display:block}
+.bt{display:inline-block;margin-left:4px;padding:2px 8px;border-radius:12px;background:rgba(107,140,255,.16);color:var(--ac);font-size:12px;font-weight:600}
+select.ubr{background:var(--bg);border:1px solid var(--bd);color:var(--tx);border-radius:8px;padding:6px 8px;font:inherit;font-size:13px}
 .main{flex:1;min-width:0;padding:24px 30px;position:relative;
 background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='340' height='150'><text x='10' y='80' transform='rotate(-8 170 75)' font-family='Georgia,serif' font-style='italic' font-weight='700' font-size='22' fill='%23808a9e' fill-opacity='.14'>Rite Products, Incorporated</text></svg>")}
 .top{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px;flex-wrap:wrap}
@@ -133,16 +138,17 @@ html,body{height:100%}.main{height:100vh;overflow-y:auto}
 <div class="bg" id="bg"></div>
 <aside>
 <div class="logo"><svg viewBox="0 0 300 36.0"><use href="#lg"/></svg></div>
+<div id="whs" class="whs"></div>
 <div id="nav"></div>
 <div class="foot"><div class="r"><b>Central Database</b><span id="cs" class="g"></span></div>
-<div class="r s"><span>v1.2 · Google Sheets · Multi-Device</span><span class="g" id="ms"></span></div></div>
+<div class="r s"><span>v1.3 · Google Sheets · Multi-Branch</span><span class="g" id="ms"></span></div></div>
 </aside>
 <div class="main" id="main"></div>
 <div class="md" id="md"><div id="mdb"></div></div>
 <div id="acbox" class="acbox"></div>
 <datalist id="pl"></datalist>
 <script>
-const VER="1.2";
+const VER="1.3";
 const SURL="https://docs.google.com/spreadsheets/d/1l2tvgEsEHUN8--eFF3tT-MncJ2SKct6YZdyHN8cBoLs/edit";
 /* Served by Apps Script HtmlService: the server is reached through google.script.run, no URL needed. */
 const okApi=()=>true;
@@ -152,6 +158,10 @@ const FLD={rr:[["no","RR no."],["date","Date","date"],["supplier","Supplier"],["
 const TT={rr:"Received (RR)",dr:"Deliveries (DR)",rs:"Reservations",cn:"Consumables"};
 let user=null,S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:[],ad:[]},tab="stock",q="",br="",per="",amsg="",impT="stock",impMsg="",grpBy="ref",ms=0,online=false,menu=false;
 try{localStorage.removeItem("rpi_tok");localStorage.removeItem("rpi_api")}catch(e){}/* clear tokens left by the old password login */
+/* Branch / warehouse: each has its own Google Sheet. The server decides which ones this user may open. */
+let wh="";try{wh=localStorage.getItem("rpi_wh")||""}catch(e){}
+const whName=()=>((user&&user.branches||[]).find(b=>b.id===wh)||{}).name||"";
+function switchWh(id){if(!id||id===wh)return;wh=id;try{localStorage.setItem("rpi_wh",wh)}catch(e){}menu=false;br="";q="";S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:S.accounts,ad:[]};render();const ov=startIntro();load().then(()=>{ov.done();toast("Switched to "+whName()+".")}).catch(e=>{ov.abort();toast(e.message)})}
 const $=i=>document.getElementById(i),v=i=>{const e=$(i);return e?e.value.trim():""};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
@@ -159,14 +169,14 @@ const isA=()=>user.role==="admin";
 const canSee=k=>k==="usr"?isA():(k==="imp"||k==="appr")?user.role!=="viewer":true;
 function toast(t){const d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),4200)}
 const rpc=q=>new Promise((ok,no)=>google.script.run.withSuccessHandler(ok).withFailureHandler(no).api(q));
-async function api(a,p){const t0=Date.now();let r;try{r=await rpc(JSON.parse(JSON.stringify({a,...p})))}catch(e){online=false;throw new Error("Cannot reach the server. Reload the page and try again."+(e&&e.message?" ("+e.message+")":""))}
+async function api(a,p){const t0=Date.now();let r;try{r=await rpc(JSON.parse(JSON.stringify({a,br:wh,...p})))}catch(e){online=false;throw new Error("Cannot reach the server. Reload the page and try again."+(e&&e.message?" ("+e.message+")":""))}
 if(!r||typeof r!=="object"){online=false;throw new Error("The server returned an empty response. Reload the page.")}
 online=true;ms=Date.now()-t0;if(r.error)throw new Error(r.error);return r}
 const objs=rows=>{const h=rows[0]||[];return rows.slice(1).map((r,i)=>{const o={_row:i+2};h.forEach((k,j)=>o[k]=r[j]??"");return o})};
 const grp=rows=>{const m={},out=[];objs(rows).forEach(o=>{if(!o.id)return;let d=m[o.id];if(!d){d={items:[]};for(const k in o)if(k!=="code"&&k!=="qty")d[k]=o[k];m[o.id]=d;out.push(d)}d.items.push({code:o.code,qty:Number(o.qty)||0})});return out};
-function applyData(r){if(r.me)user=r.me;if(r.accounts)S.accounts=objs(r.accounts);if(r.pending)S.pending=objs(r.pending);for(const t of["rr","dr","rs","cn"])if(r[t])S[t]=grp(r[t]);if(r.ad)S.ad=grpAd(r.ad);
+function applyData(r){if(r.me){user=r.me;if(r.me.branch&&r.me.branch!==wh){wh=r.me.branch;try{localStorage.setItem("rpi_wh",wh)}catch(e){}}}if(r.accounts)S.accounts=objs(r.accounts);if(r.pending)S.pending=objs(r.pending);for(const t of["rr","dr","rs","cn"])if(r[t])S[t]=grp(r[t]);if(r.ad)S.ad=grpAd(r.ad);
 if(r.products){S.products=objs(r.products).map(p=>({...p,opening:Number(p.opening)||0,min:p.min===""?0:Number(p.min)||0}));}render()}
-async function load(a){applyData(await api("data",Array.isArray(a)?{only:a}:a===true?{fresh:1}:{}))}
+async function load(a){const w0=wh,r=await api("data",Array.isArray(a)?{only:a}:a===true?{fresh:1}:{});if(w0&&wh!==w0)return;/* branch switched meanwhile: drop stale data */applyData(r)}
 const bgRun=(fn,only)=>{fn().then(()=>only&&load(only)).catch(e=>{toast("Not saved: "+e.message);load(true).catch(()=>{})})};
 const refreshRows=()=>{const b=$("rows");if(b)b.innerHTML=rows();else render()};
 function addLocalProduct(p){const np={...p,_row:S.products.length+2},i=S.products.map(x=>x.brand).lastIndexOf(p.brand);if(i<0)S.products.push(np);else S.products.splice(i+1,0,np)}
@@ -192,7 +202,7 @@ function intro(){startIntro().done()}
 /* ---------- views ---------- */
 function bn(){return(!online?'<div class="bn e">Cannot reach the central database. Showing the last loaded data.</div>':"")+(user.role==="viewer"?'<div class="bn w">Viewer role: view only. Encoding and editing are disabled.</div>':"")+(user.role==="editor"?'<div class="bn w">Editor role: edits and deletions need admin approval.</div>':"")}
 function head(){const n=NAV.find(x=>x[0]===tab)[1],ini=(user.name||user.username||"?").trim()[0].toUpperCase();
-return`<div class="top"><div><h1>${n}</h1><p>${tab==="stock"?S.products.length+" products in catalog":tab==="usr"?S.accounts.length+" users":""}</p></div><div class="sp"></div>${tab==="stock"?'<button class="ed" data-dlst="1" title="Downloads the rows currently shown (respects search and brand filter)">⬇ Download stocks</button>'+(user.role==="viewer"?"":'<button class="add" data-add="1">＋ Add product</button>'):""}<button class="ic" id="th" title="Theme">☀</button><div class="menuw" style="position:relative"><button class="av" id="av" title="Account">${esc(ini)}</button>${menu?`<div class="menu"><div><b>${esc(user.name)}</b><br>@${esc(user.username)} · ${user.role}<br><span class="mut">${esc(user.email)}</span></div><button data-t="set">⚙ Settings</button></div>`:""}</div></div>`+bn()}
+return`<div class="top"><div><h1>${n}</h1><p>${tab!=="usr"&&tab!=="set"&&whName()?`<span class="bt">${esc(whName())}</span> `:""}${tab==="stock"?S.products.length+" products in catalog":tab==="usr"?S.accounts.length+" users":""}</p></div><div class="sp"></div>${tab==="stock"?'<button class="ed" data-dlst="1" title="Downloads the rows currently shown (respects search and brand filter)">⬇ Download stocks</button>'+(user.role==="viewer"?"":'<button class="add" data-add="1">＋ Add product</button>'):""}<button class="ic" id="th" title="Theme">☀</button><div class="menuw" style="position:relative"><button class="av" id="av" title="Account">${esc(ini)}</button>${menu?`<div class="menu"><div><b>${esc(user.name)}</b><br>@${esc(user.username)} · ${user.role}<br><span class="mut">${esc(user.email)}</span></div><button data-t="set">⚙ Settings</button></div>`:""}</div></div>`+bn()}
 function stockV(){const bs=[...new Set(S.products.map(p=>p.brand))].sort();
 return`<div class="bar"><div class="sb${q?" has":""}"><input id="q" placeholder="🔍  Search stock: product code or brand..." value="${esc(q)}"><button class="cx" data-cx="1" title="Clear" type="button">×</button></div><select id="br"><option value="">All brands (${bs.length})</option>${bs.map(b=>`<option${b===br?" selected":""}>${esc(b)}</option>`).join("")}</select></div><div class="tb st"><table><thead><tr><th>Brand</th><th>Product code</th><th>UM</th><th class="r">Beginning</th><th class="r">Stock<br>in (RR)</th><th class="r">Stock<br>out (DR)</th><th class="r">Reserved<br>(RS)</th><th class="r">Consumed<br>(CN)</th><th class="r">Assembled</th><th class="r">Disassembled</th><th class="r">Ending</th><th style="text-align:center">Low stock<br>alert</th><th>Status</th><th class="r">Action</th></tr></thead><tbody id="rows">${rows()}</tbody></table></div>`}
 function rows(){return S.products.filter(p=>(!br||p.brand===br)&&(p.code+" "+p.brand).toLowerCase().includes(q.toLowerCase())).map(p=>{const c=calc(p);
@@ -242,12 +252,19 @@ return`<div class="card pad"><div class="f">${Object.keys(IMP).map(k=>`<button c
 function apprV(){const l=S.pending.slice().reverse();if(!l.length)return'<div class="card pad mut">No pending changes.</div>';
 return l.map(p=>{let a={},b={};try{a=JSON.parse(p.after||"{}")}catch(e){}try{b=JSON.parse(p.before||"{}")}catch(e){}const st=p.status||"pending";
 return`<div class="card pad"><b>${esc(p.type.toUpperCase())} · ${esc(a.action||"")}</b> <span class="mut">by ${esc(p.by)} · ${esc(st)}${p.decidedBy?" by "+esc(p.decidedBy):""}</span><div>${p.reason?`<i>“${esc(p.reason)}”</i><br>`:""}${esc(a.summary||"")}${b.summary?`<br><span class="mut">Before: ${esc(b.summary)}</span>`:""}</div>${st==="pending"&&isA()?`<div class="f" style="margin:10px 0 0"><button class="add" data-ok="${esc(p.id)}">Approve</button><button class="ed" data-no="${esc(p.id)}">Reject</button></div>`:""}</div>`}).join("")}
+/* Branch access per user. Stored in ACCOUNTS column I as e.g. "manila", "cebu", "manila,cebu". Empty = Manila. Admins always see all. */
+const ALLB=()=>user.role==="admin"?(user.branches||[]):[];
+function ubrKeys(a){const all=ALLB().map(b=>b.id),raw=String(a.branches||"").toLowerCase();if(raw.includes("all"))return all;const k=raw.split(/[^a-z]+/).filter(x=>all.includes(x));return k.length?k:all.slice(0,1)}
+function ubrCell(a,ok){const B=ALLB(),nm=id=>(B.find(b=>b.id===id)||{name:id}).name;if(a.role==="admin")return'<span class="mut">All branches</span>';const cur=ubrKeys(a);
+if(!ok||!a._row||B.length<2)return esc(cur.map(nm).join(", "));const opts=B.map(b=>[b.id,b.name]).concat([[B.map(b=>b.id).join(","),"All branches"]]);const val=cur.join(",");
+return`<select class="ubr" data-ubr="${a._row}">${opts.map(o=>`<option value="${esc(o[0])}"${o[0]===val?" selected":""}>${esc(o[1])}</option>`).join("")}</select>`}
 function usrV(){const ok=isA(),rk=a=>a.role==="admin"?0:a.role==="editor"?1:2,L=S.accounts.slice().sort((a,b)=>rk(a)-rk(b)||String(a.name).localeCompare(b.name));
-return(ok?"":'<div class="bn w">Only admins can change roles.</div>')+`<div class="tb us"><table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th></tr></thead><tbody>${L.map(a=>`<tr><td><div class="u"><span class="uav">${esc((a.name||a.username||"?").trim()[0].toUpperCase())}</span><div><b>${esc(a.name)}</b><br><span class="mut">@${esc(a.username)}</span></div></div></td><td>${esc(a.email)}</td><td>${ok&&a.email!==user.email&&a._row?`<select class="rl" data-ur="${a._row}">${["admin","editor","viewer"].map(r=>`<option${r===a.role?" selected":""}>${r}</option>`).join("")}</select>`:`<span class="pill p-${a.role==="admin"?"in":a.role==="editor"?"low":"out"}">${esc(a.role)}${a.email===user.email?" (you)":""}</span>`}</td><td class="c">${esc(a.created)}</td></tr>`).join("")}</tbody></table></div>`}
-const cdbV=()=>`<div class="card pad"><p style="margin-top:0">${online?'<span class="dot"></span>Connected to Google Sheets · '+ms+" ms":'<span class="mut">Not connected</span>'}</p><div class="f">${isA()?`<a class="add" style="text-decoration:none" href="${SURL}" target="_blank" rel="noopener">Open Google Sheet</a>`:""}<button class="ed" data-ref="1">↻ Refresh from cloud</button></div></div>${isA()?`<div class="card tb"><table><thead><tr><th>Tab</th><th class="r">Records</th></tr></thead><tbody>${["products","rr","dr","rs","cn","ad","accounts","pending"].map(t=>`<tr><td>${t}</td><td class="r">${S[t].length}</td></tr>`).join("")}</tbody></table></div>`:""}`;
+return(ok?"":'<div class="bn w">Only admins can change roles.</div>')+`<div class="tb us"><table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Branches</th><th>Joined</th></tr></thead><tbody>${L.map(a=>`<tr><td><div class="u"><span class="uav">${esc((a.name||a.username||"?").trim()[0].toUpperCase())}</span><div><b>${esc(a.name)}</b><br><span class="mut">@${esc(a.username)}</span></div></div></td><td>${esc(a.email)}</td><td>${ok&&a.email!==user.email&&a._row?`<select class="rl" data-ur="${a._row}">${["admin","editor","viewer"].map(r=>`<option${r===a.role?" selected":""}>${r}</option>`).join("")}</select>`:`<span class="pill p-${a.role==="admin"?"in":a.role==="editor"?"low":"out"}">${esc(a.role)}${a.email===user.email?" (you)":""}</span>`}</td><td>${ubrCell(a,ok)}</td><td class="c">${esc(a.created)}</td></tr>`).join("")}</tbody></table></div>`}
+const cdbV=()=>`<div class="card pad"><p style="margin-top:0">${online?'<span class="dot"></span>Connected to Google Sheets'+(whName()?" · "+esc(whName()):"")+" · "+ms+" ms":'<span class="mut">Not connected</span>'}</p><div class="f">${isA()?`<a class="add" style="text-decoration:none" href="${esc(user.sheet||SURL)}" target="_blank" rel="noopener">Open ${esc(whName()||"Google")} Sheet</a>`:""}<button class="ed" data-ref="1">↻ Refresh from cloud</button></div></div>${isA()?`<div class="card tb"><table><thead><tr><th>Tab</th><th class="r">Records</th></tr></thead><tbody>${["products","rr","dr","rs","cn","ad","accounts","pending"].map(t=>`<tr><td>${t}</td><td class="r">${S[t].length}</td></tr>`).join("")}</tbody></table></div>`:""}`;
 const setV=()=>`<div class="card pad sf"><h3>Profile</h3><label>Full name</label><input id="s_n" value="${esc(user.name)}"><label>Username</label><input id="s_u" value="${esc(user.username)}"><label>Email</label><input value="${esc(user.email)}" disabled><div class="f" style="margin:14px 0 0"><button class="add" data-prof="1">Save profile</button></div></div><div class="card pad sf"><h3>Sign-in</h3><p class="mut" style="margin:0">You are signed in with your company Google account. There is no separate password for RPI Inventory. To use a different account, switch accounts in Google and reload this page.</p></div><div class="card pad sf"><button class="ed" id="th2">Toggle light / dark</button><p class="mut" style="margin:12px 0 0">RPI Inventory System version ${VER}</p></div>`;
 function render(){document.body.classList.toggle("na",!user);const m=$("main"),keep=[...document.querySelectorAll(".tb")].map(e=>e.scrollTop);if(!user){m.innerHTML=authV();return}
 if(!canSee(tab))tab="stock";$("nav").innerHTML=NAV.filter(n=>canSee(n[0])).map(n=>{const c=n[0]==="appr"?S.pending.filter(p=>(p.status||"pending")==="pending").length:0;return`<button class="nv${n[0]===tab?" on":""}" data-t="${n[0]}"><svg viewBox="0 0 24 24"><path d="${n[2]}"/></svg>${n[1]}${c?" ("+c+")":""}</button>`}).join("");
+{const L=user.branches||[];$("whs").innerHTML=L.length>1?`<label for="wh">Branch / Warehouse</label><select id="wh">${L.map(b=>`<option value="${esc(b.id)}"${b.id===wh?" selected":""}>${esc(b.name)}</option>`).join("")}</select>`:L.length?`<label>Branch / Warehouse</label><span class="one">${esc(L[0].name)}</span>`:""}
 $("cs").innerHTML=online?'<span class="dot"></span>Cloud Synced':'<span class="dot" style="background:var(--neg)"></span>Offline';$("ms").textContent=online?ms+"ms":"";
 m.innerHTML=head()+(tab==="stock"?stockV():tab==="ad"?adV():HD[tab]?txnV(tab):tab==="imp"?impV():tab==="appr"?apprV():tab==="usr"?usrV():tab==="cdb"?cdbV():setV());document.querySelectorAll(".tb").forEach((e,i)=>{if(keep[i])e.scrollTop=keep[i]});if(tab==="ad")adSync();noAuto()}
 /* ---------- modals & actions ---------- */
@@ -308,7 +325,7 @@ const hdr=["Brand","Product Code","UM","Beginning","RR In","DR Out","Reserved (R
 const cs=x=>{x=String(x??"");return /[",\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x};
 const rows=list.map(p=>{const c=calc(p);return[p.brand,p.code,p.unit,p.opening,c.i,c.o,c.rv,c.c,c.asm,c.dis,c.e,c.m,c.s[1].replace(/ \(.*\)$/,"")]});
 const csv=[hdr,...rows].map(r=>r.map(cs).join(",")).join("\r\n")+"\r\n";
-const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));a.download="RPI-stocks-"+today()+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("Downloaded "+list.length+" products.")}
+const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));a.download="RPI-stocks-"+(wh?wh+"-":"")+today()+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("Downloaded "+list.length+" products.")}
 function dlTpl(k){const m=IMP[k],csv=[m.h,...m.ex].map(r=>r.map(x=>/[",\n]/.test(String(x))?'"'+String(x).replace(/"/g,'""')+'"':x).join(",")).join("\r\n")+"\r\n";const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));a.download=m.f;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function prof(){try{const r=await api("profile",{name:v("s_n"),username:v("s_u").toLowerCase()});user=r.me;render();toast("Profile updated.")}catch(e){toast(e.message)}}
 async function tsave(t){const h={};FLD[t].forEach(([k])=>h[k]=v("f_"+k));const L=getLines($("lines"));
@@ -393,6 +410,8 @@ else if(b.id==="th"||b.id==="th2"){const r=document.documentElement;r.dataset.th
 document.addEventListener("input",e=>{if(e.target.id==="q"){q=e.target.value;$("rows").innerHTML=rows();e.target.parentNode.classList.toggle("has",!!q)}});
 document.addEventListener("change",async e=>{const t=e.target;if(t.id==="csvf"){const f=t.files[0];if(f){const fr=new FileReader();fr.onload=()=>{$("csv").value=fr.result;$("impr").textContent="File loaded. Press Import products."};fr.readAsText(f)}}else if(t.id==="br"){br=t.value;$("rows").innerHTML=rows()}else if(t.id==="ad_t"||t.id==="ad_m"){adSync()}else if(t.id==="per"){per=t.value;render()}
 else if(t.dataset.mn){const o=S.products.find(x=>x.code===t.dataset.mn);if(o){o.min=Number(t.value)||0;refreshRows();bgRun(()=>api("updp",{code:o.code,c:5,v:[o.min]}))}}
+else if(t.id==="wh"){switchWh(t.value)}
+else if(t.dataset.ubr){const ac=S.accounts.find(x=>String(x._row)===t.dataset.ubr);if(ac)ac.branches=t.value;toast("Branch access updated.");bgRun(()=>api("upd",{s:"accounts",r:Number(t.dataset.ubr),c:7,v:[t.value]}),["accounts"])}
 else if(t.dataset.ur){const ac=S.accounts.find(x=>String(x._row)===t.dataset.ur);if(ac)ac.role=t.value;toast("Role updated.");bgRun(()=>api("upd",{s:"accounts",r:Number(t.dataset.ur),c:4,v:[t.value]}),["accounts"])}});
 function bgInit(){const b=$("bg");let s=7;const R=()=>(s=(s*9301+49297)%233280)/233280;for(let i=0;i<34;i++){const e=document.createElementNS("http://www.w3.org/2000/svg","svg"),w=170+R()*200;e.setAttribute("viewBox","0 0 300 36.0");e.setAttribute("class","wm");e.innerHTML='<use href="#lg"/>';
 e.style.cssText=`left:${(R()*108-8).toFixed(1)}%;top:${(R()*104-4).toFixed(1)}%;width:${w|0}px;height:${(w*36.0/300)|0}px;--r:${(R()*60-30)|0}deg;--x:${(R()*180-90)|0}px;--y:${(R()*180-90)|0}px;--d:${(30+R()*50)|0}s;--l:-${(R()*40)|0}s`;b.appendChild(e)}}
