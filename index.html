@@ -161,7 +161,7 @@ try{localStorage.removeItem("rpi_tok");localStorage.removeItem("rpi_api")}catch(
 /* Branch / warehouse: each has its own Google Sheet. The server decides which ones this user may open. */
 let wh="";try{wh=localStorage.getItem("rpi_wh")||""}catch(e){}
 const whName=()=>((user&&user.branches||[]).find(b=>b.id===wh)||{}).name||"";
-function switchWh(id){if(!id||id===wh)return;wh=id;try{localStorage.setItem("rpi_wh",wh)}catch(e){}menu=false;br="";q="";S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:S.accounts,ad:[]};render();const ov=startIntro();load().then(()=>{ov.done();toast("Switched to "+whName()+".")}).catch(e=>{ov.abort();toast(e.message)})}
+function switchWh(id){if(!id||id===wh)return;wh=id;try{localStorage.setItem("rpi_wh",wh)}catch(e){}menu=false;br="";q="";S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:S.accounts,ad:[]};render();load().then(()=>{render();toast("Switched to "+whName()+".")}).catch(e=>toast(e.message))}
 const $=i=>document.getElementById(i),v=i=>{const e=$(i);return e?e.value.trim():""};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
