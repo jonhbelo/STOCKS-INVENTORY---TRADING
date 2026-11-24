@@ -1,6 +1,8 @@
-/** RPI Inventory v1.3 - Google Apps Script web app (serves index.html + server API).
+/** RPI Inventory v1.4 - Google Apps Script web app (serves index.html + server API).
  *  Multi-branch: each branch (warehouse) has its own Google Sheet. The user list lives
  *  in the HOME branch sheet (ACCOUNTS tab) and is shared by all branches.
+ *  Transfers between branches are written to the TRANSFERS tab of both sheets:
+ *  an OUT row in the sending branch and an IN row (same id) in the receiving branch.
  *  Deploy: Deploy > New deployment > Web app > Execute as: Me,
  *          Who has access: Anyone within riteproducts.com.ph. See DEPLOY.md. */
 var BRANCHES = {
@@ -8,9 +10,11 @@ var BRANCHES = {
   cebu:   {name: 'Cebu Branch',   id: '1E-cTYqib8mErxa01eDcq8-5SCmn-zs9LyGhcfGZeIYQ'}   // INVENTORY SYSTEM - TRADING - CEBU BRANCH
 };
 var HOME = 'manila';   // the sheet that holds ACCOUNTS
-var W = {products:5, rr:10, dr:8, rs:8, cn:8, pending:10, ad:9};
+var W = {products:5, rr:10, dr:8, rs:8, cn:8, pending:10, ad:9, tf:10};
 var TX = ['rr','dr','rs','cn','ad'];
-var DATA = ['products','rr','dr','rs','cn','pending','ad'];
+var DATA = ['products','rr','dr','rs','cn','pending','ad','tf'];
+/** TRANSFERS columns: id, no, date, dir (OUT or IN), branch (the other branch), code, qty, by, ts, note */
+var TF_HEAD = ['id','no','date','dir','branch','code','qty','by','ts','note'];
 /** ACCOUNTS columns sent to the page: A-F plus I (branches). G-H (old password data) are never read. */
 var ACC_COLS = [1,2,3,4,5,6,9];
 
@@ -58,7 +62,7 @@ function api(q){
 }
 
 /* ---------- sheets (one spreadsheet per branch) ---------- */
-var TABS = {products:['products'], rr:['rr'], dr:['dr'], rs:['reservations','rs'], cn:['consumables','cn'], accounts:['accounts'], pending:['pending aproval','pending approval','pending'], ad:['assembly','assembled / disassembled','assembled-disassembled']};
+var TABS = {products:['products'], rr:['rr'], dr:['dr'], rs:['reservations','rs'], cn:['consumables','cn'], accounts:['accounts'], pending:['pending aproval','pending approval','pending'], ad:['assembly','assembled / disassembled','assembled-disassembled'], tf:['transfers','transfer']};
 var _books = {};
 function sheetsOf(b){ return _books[b] || (_books[b] = SpreadsheetApp.openById(BRANCHES[b].id).getSheets()); }
 function sh(n, b){
@@ -113,7 +117,8 @@ function pickBranch(u, want){
 }
 function me(a, b){
   var o = {email:a.email, username:a.username, name:a.name, role:a.role, branch:b,
-           branches: userBranches(a).map(function(k){ return {id:k, name:BRANCHES[k].name}; })};
+           branches: userBranches(a).map(function(k){ return {id:k, name:BRANCHES[k].name}; }),
+           all: Object.keys(BRANCHES).map(function(k){ return {id:k, name:BRANCHES[k].name}; })};
   if (a.role === 'admin' && b) o.sheet = 'https://docs.google.com/spreadsheets/d/' + BRANCHES[b].id + '/edit';
   return o;
 }
@@ -122,7 +127,7 @@ function bundle(u, b, only){
   (only || DATA.concat('accounts')).forEach(function(n){
     if (n==='accounts' && u.role!=='admin') { o[n]=[]; return; }
     if (n==='pending' && u.role==='viewer') { o[n]=[]; return; }
-    try { o[n] = rdc(n, b); } catch (e) { if (n==='ad') o[n]=[]; else throw e; }
+    try { o[n] = rdc(n, b); } catch (e) { if (n==='ad') o[n]=[]; else if (n==='tf') o[n]=[TF_HEAD]; else throw e; }
   });
   return o;
 }
@@ -188,7 +193,7 @@ function go(q){
   lock.waitLock(20000);
   try {
     if (a==='add'){
-      var n=q.s; if (!(W[n] && n!=='ad' && wr)) throw 'Viewers cannot change data.';
+      var n=q.s; if (!(W[n] && n!=='ad' && n!=='tf' && wr)) throw 'Viewers cannot change data.';
       var rows=q.rows, added=rows.length;
       if (n==='pending' && !adm) rows.forEach(function(r){ r[8]='pending'; r[9]=''; });
       var s2=sh(n, b);
@@ -227,6 +232,45 @@ function go(q){
       var sa=sh('ad', b); sa.getRange(sa.getLastRow()+1,1,arows.length,9).setValues(arows.map(function(r){return r.map(cell);}));
       dirty('ad', b); return {ok:1, id:id};
     }
+    if (a==='xfer'){
+      // Transfer stock from the current branch (b) to another branch (q.to).
+      // Writes OUT rows to b's TRANSFERS tab and IN rows (same id) to q.to's TRANSFERS tab.
+      if (!wr) throw 'Viewers cannot transfer stock.';
+      var to=String(q.to||''), items=q.items||[], tdt=String(q.date||'').trim();
+      if (!BRANCHES[to]) throw 'Choose the branch to transfer to.';
+      if (to===b) throw 'Choose a different branch to transfer to.';
+      if (!tdt) throw 'Enter a date.';
+      if (!items.length) throw 'Add at least one item.';
+      var sp=sh('products', b), sl=sp.getLastRow(), src={};
+      (sl>1 ? sp.getRange(2,1,sl-1,5).getValues() : []).forEach(function(r){ src[String(r[1]).toUpperCase()]={brand:String(r[0]), code:String(r[1]), unit:String(r[2])}; });
+      items.forEach(function(it){
+        if (!src[String(it.code||'').trim().toUpperCase()]) throw 'Not in the ' + BRANCHES[b].name + ' catalog: ' + it.code;
+        if (!(Number(it.qty)>0)) throw 'Bad quantity for ' + it.code;
+      });
+      var stf=sh('tf', b), dtf=sh('tf', to);
+      // Products the receiving branch does not carry yet are added to its catalog with 0 opening stock.
+      var newp=items.map(function(it){ var p=src[String(it.code).trim().toUpperCase()]; return [p.brand, p.code, p.unit, 0, 0]; });
+      if (insProducts(sh('products', to), newp)) dirty('products', to);
+      var tts=new Date().getTime(), tid='tf_'+tts+'_'+Utilities.getUuid().slice(0,4), tno=String(q.no||'').trim(), note=String(q.note||'').trim();
+      var outR=[], inR=[];
+      items.forEach(function(it){
+        var code=src[String(it.code).trim().toUpperCase()].code, qty=Number(it.qty);
+        outR.push([tid,tno,tdt,'OUT',BRANCHES[to].name,code,qty,u.username,tts,note]);
+        inR.push([tid,tno,tdt,'IN',BRANCHES[b].name,code,qty,u.username,tts,note]);
+      });
+      stf.getRange(stf.getLastRow()+1,1,outR.length,W.tf).setValues(outR.map(function(r){return r.map(cell);}));
+      dtf.getRange(dtf.getLastRow()+1,1,inR.length,W.tf).setValues(inR.map(function(r){return r.map(cell);}));
+      dirty('tf', b); dirty('tf', to);
+      return {ok:1, id:tid};
+    }
+    if (a==='xdel'){
+      // Admins only: removes a transfer from every branch's TRANSFERS tab, so both sides stay matched.
+      if (!adm) throw 'Admins only';
+      var xid=String(q.id||'');
+      if (!/^tf_/.test(xid)) throw 'Bad transfer id';
+      Object.keys(BRANCHES).forEach(function(k){ try { delId(sh('tf', k), xid); dirty('tf', k); } catch (e) {} });
+      return {ok:1};
+    }
     if (a==='updp'){
       if (!adm) throw 'Admins only';
       var pp=sh('products', b), pl2=pp.getLastRow(), codes=pl2>1 ? pp.getRange(2,2,pl2-1,1).getValues() : [], target=String(q.code).toUpperCase(), prow=-1;
@@ -250,7 +294,7 @@ function go(q){
         c.remove('u_' + String(as.getRange(row,1).getValue()).toLowerCase());
         dirty('accounts'); return {ok:1};
       }
-      if (!W[n2]) throw 'Bad sheet';
+      if (!W[n2] || n2==='tf') throw 'Bad sheet';
       var v=q.v.map(cell); if (q.c+v.length-1>W[n2]) throw 'Not allowed';
       sh(n2, b).getRange(q.r,q.c,1,v.length).setValues([v]); dirty(n2, b); return {ok:1};
     }

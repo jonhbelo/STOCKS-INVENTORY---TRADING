@@ -48,7 +48,7 @@ The `accounts` tab still holds the old password salts and hashes (columns **G** 
 Run it only after the new version is deployed.
 
 ## Branches / warehouses
-Each branch has its own Google Sheet with the same tabs (PRODUCTS, RR, DR, RESERVATIONS, CONSUMABLES, ASSEMBLY, PENDING APROVAL, STOCKS):
+Each branch has its own Google Sheet with the same tabs (PRODUCTS, RR, DR, RESERVATIONS, CONSUMABLES, ASSEMBLY, TRANSFERS, PENDING APROVAL, STOCKS):
 
 | Branch | Google Sheet | Key in `Code.gs` |
 |---|---|---|
@@ -62,8 +62,14 @@ Each branch has its own Google Sheet with the same tabs (PRODUCTS, RR, DR, RESER
   - Admins always see every branch.
   - New users start as viewers with Manila access.
 - **Separate catalogs:** each branch has its own products and opening stock. Cebu started with the same 711 products and an opening stock of 0. Adding a product in one branch doesn't add it to the other.
+- **Transfers (v1.4):** on the **Transfers** page, pick the receiving branch, add items and press **Transfer stock**.
+  - The app writes the same transfer to both sheets' **TRANSFERS** tab: an `OUT` row in the sending branch and an `IN` row with the same id in the receiving branch.
+  - The sending branch's stock goes down and the receiving branch's goes up straight away. There is no separate "receive" step.
+  - If the receiving branch doesn't carry a product yet, it is added to that branch's PRODUCTS with 0 opening stock.
+  - Everyone can see the page. Viewers can't create transfers. Only admins can delete one, and a delete removes it from both sheets.
+  - In each STOCKS tab, columns K and L hold **Transfer in** and **Transfer out**, and **Ending** (column M) includes them.
 - **Adding another branch later:**
-  1. Copy a branch sheet in Drive and empty its transaction tabs.
+  1. Copy a branch sheet in Drive and empty its transaction tabs, including TRANSFERS.
   2. Add a line to `BRANCHES` in `Code.gs`, for example `davao: {name: 'Davao Branch', id: '<sheet id>'}`.
   3. Redeploy.
 

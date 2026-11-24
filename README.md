@@ -2,17 +2,18 @@
 
 A web-based stock inventory system for **Rite Products, Inc.** trading warehouses. It runs as a **Google Apps Script web app** and uses **Google Sheets** as its database, with one sheet per branch.
 
-**Version:** 1.3 · **Branches:** Manila, Cebu
+**Version:** 1.4 · **Branches:** Manila, Cebu
 
 ## Features
 
-- **Stock overview:** live ending balance per product, calculated as opening stock + received − delivered − reserved − consumed ± assembled/disassembled. It also shows low-stock, out-of-stock and negative-stock alerts, brand filter and search, and a CSV download.
+- **Stock overview:** live ending balance per product, calculated as opening stock + received − delivered − reserved − consumed ± assembled/disassembled + transferred in − transferred out. It also shows low-stock, out-of-stock and negative-stock alerts, brand filter and search, and a CSV download.
 - **Transactions:**
   - Received (RR)
   - Deliveries (DR)
   - Reservations (borrowing slips)
   - Consumables (by project / JO)
   - Assembled / Disassembled items
+- **Transfers between branches:** send stock from Manila to Cebu or back. The **Transfers** tab shows what each branch sent out and what it received. Every role can see it; editors and admins can create transfers, and only admins can delete them.
 - **Multi-branch:** a **Branch / Warehouse** switcher. Each branch keeps its own catalog, stock and transactions in its own Google Sheet.
 - **Roles:**
   - **Admin:** full access and user management.
@@ -49,6 +50,7 @@ Each branch spreadsheet has these tabs:
 | `PRODUCTS` | brand, code, unit, opening stock, low-stock alert |
 | `RR` / `DR` / `RESERVATIONS` / `CONSUMABLES` | transaction lines (one row per item) |
 | `ASSEMBLY` | assembled / disassembled ledger (item and component rows) |
+| `TRANSFERS` | branch-to-branch transfers: an `OUT` row in the sending branch and a matching `IN` row in the receiving branch |
 | `PENDING APROVAL` | editor change requests awaiting admin approval |
 | `STOCKS` | formula view of the stock balance (read-only) |
 | `ACCOUNTS` | user list: **Manila sheet only**, shared by all branches |
