@@ -10,6 +10,9 @@ var BRANCHES = {
   cebu:   {name: 'Cebu Branch',   id: '1E-cTYqib8mErxa01eDcq8-5SCmn-zs9LyGhcfGZeIYQ'}   // INVENTORY SYSTEM - TRADING - CEBU BRANCH
 };
 var HOME = 'manila';   // the sheet that holds ACCOUNTS
+/** Keep equal to VER in index.html. Pages left open on an older version see a "Reload" banner. */
+var APP_VER = '1.4';
+function appUrl(){ try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
 var W = {products:5, rr:10, dr:8, rs:8, cn:8, pending:10, ad:9, tf:10};
 var TX = ['rr','dr','rs','cn','ad'];
 var DATA = ['products','rr','dr','rs','cn','pending','ad','tf'];
@@ -118,7 +121,8 @@ function pickBranch(u, want){
 function me(a, b){
   var o = {email:a.email, username:a.username, name:a.name, role:a.role, branch:b,
            branches: userBranches(a).map(function(k){ return {id:k, name:BRANCHES[k].name}; }),
-           all: Object.keys(BRANCHES).map(function(k){ return {id:k, name:BRANCHES[k].name}; })};
+           all: Object.keys(BRANCHES).map(function(k){ return {id:k, name:BRANCHES[k].name}; }),
+           ver: APP_VER, url: appUrl()};
   if (a.role === 'admin' && b) o.sheet = 'https://docs.google.com/spreadsheets/d/' + BRANCHES[b].id + '/edit';
   return o;
 }

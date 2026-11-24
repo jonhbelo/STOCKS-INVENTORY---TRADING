@@ -22,7 +22,14 @@ The HTML file must be named exactly **`index`**, because `doGet()` loads it by t
 7. Open the **Web app URL** that ends in `/exec`. The app opens straight away, already signed in as your company Google account.
 
 ## Updating later, keeping the same URL
-After you edit and save, go to **Deploy → Manage deployments**. Click the pencil on your deployment, set **Version → New version**, then click **Deploy**.
+Users keep one link forever. Every update goes into the **same** deployment:
+
+1. Paste the new `Code.gs` and `index.html`, then click **Save**.
+2. Go to **Deploy → Manage deployments**. Click the pencil on your existing deployment, set **Version → New version**, then click **Deploy**.
+
+Never use **Deploy → New deployment** for an update. That creates a second deployment with a different link.
+
+**Pages already open:** within about 30 seconds (the auto-refresh), anyone with the app open sees a yellow banner: "A new version of RPI Inventory is ready", with a **Reload now** button. When you release a new version, raise both version numbers so the banner appears: `APP_VER` near the top of `Code.gs` and `VER` in `index.html`.
 (**Test deployments** gives a `/dev` URL that always runs the latest saved code. Only editors can use it.)
 
 ## Company-only access (@riteproducts.com.ph)
