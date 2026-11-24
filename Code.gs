@@ -13,10 +13,11 @@ var HOME = 'manila';   // the sheet that holds ACCOUNTS
 /** Keep equal to VER in index.html. Pages left open on an older version see a "Reload" banner. */
 var APP_VER = '1.4';
 function appUrl(){ try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
-var W = {products:5, rr:10, dr:8, rs:8, cn:8, pending:10, ad:9, tf:10};
+var W = {products:5, rr:10, dr:10, rs:8, cn:8, pending:10, ad:9, tf:10};
 var TX = ['rr','dr','rs','cn','ad'];
 var DATA = ['products','rr','dr','rs','cn','pending','ad','tf'];
 /** TRANSFERS columns: id, no, date, dir (OUT or IN), branch (the other branch), code, qty, by, ts, note */
+/** DR columns I and J: status ("VOID" when cancelled) and void_note. A void DR keeps its number but no longer reduces stock. */
 var TF_HEAD = ['id','no','date','dir','branch','code','qty','by','ts','note'];
 /** ACCOUNTS columns sent to the page: A-F plus I (branches). G-H (old password data) are never read. */
 var ACC_COLS = [1,2,3,4,5,6,9];
@@ -302,10 +303,22 @@ function go(q){
       var v=q.v.map(cell); if (q.c+v.length-1>W[n2]) throw 'Not allowed';
       sh(n2, b).getRange(q.r,q.c,1,v.length).setValues([v]); dirty(n2, b); return {ok:1};
     }
+    if (a==='void'){
+      // Admins only (editors go through Approvals): mark every row of a DR as VOID.
+      if (!adm) throw 'Admins only';
+      if (q.s!=='dr') throw 'Only DRs can be voided.';
+      var vs=sh('dr', b), vl=vs.getLastRow(), vids=vl>1 ? vs.getRange(2,1,vl-1,1).getValues() : [], vid=String(q.id), hit=0;
+      var vnote='Voided by '+u.username+' on '+Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')+(q.reason ? ': '+String(q.reason).trim() : '');
+      for (var vi=0;vi<vids.length;vi++) if (String(vids[vi][0])===vid){ vs.getRange(vi+2,9,1,2).setValues([['VOID', cell(vnote)]]); hit++; }
+      if (!hit) throw 'DR not found. It may have been deleted.';
+      dirty('dr', b); return {ok:1, n:hit};
+    }
     if (a==='del' || a==='rep'){
       if (!adm) throw 'Admins only';
       if (TX.indexOf(q.s)<0) throw 'Bad sheet';
-      var s3=sh(q.s, b); delId(s3,String(q.id));
+      var s3=sh(q.s, b);
+      if (a==='rep' && q.s==='dr'){ var dv=s3.getRange(1,1,Math.max(s3.getLastRow(),1),9).getValues(); for (var di=1;di<dv.length;di++) if (String(dv[di][0])===String(q.id) && String(dv[di][8]).toUpperCase()==='VOID') throw 'This DR is void and cannot be edited.'; }
+      delId(s3,String(q.id));
       if (a==='rep'){ var rr=q.rows.map(function(r){return r.map(cell);}); s3.getRange(s3.getLastRow()+1,1,rr.length,W[q.s]).setValues(rr); }
       dirty(q.s, b); return {ok:1};
     }

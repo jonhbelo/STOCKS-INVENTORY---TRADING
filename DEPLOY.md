@@ -75,6 +75,11 @@ Each branch has its own Google Sheet with the same tabs (PRODUCTS, RR, DR, RESER
   - If the receiving branch doesn't carry a product yet, it is added to that branch's PRODUCTS with 0 opening stock.
   - Everyone can see the page. Viewers can't create transfers. Only admins can delete one, and a delete removes it from both sheets.
   - In each STOCKS tab, columns K and L hold **Transfer in** and **Transfer out**, and **Ending** (column M) includes them.
+- **Voiding a DR:** open a DR on the Deliveries page and press **Void**, giving a reason.
+  - Admins void it at once. An editor's void goes to **Approvals** first. Viewers can't void.
+  - The DR keeps its number and shows a red **VOID** label, so it is not reported as a skipped number.
+  - Its quantities go back into stock. In the DR tab, column I (`status`) says `VOID` and column J (`void_note`) records who voided it, when and why.
+  - The STOCKS **DR out** column skips rows marked `VOID`.
 - **Adding another branch later:**
   1. Copy a branch sheet in Drive and empty its transaction tabs, including TRANSFERS.
   2. Add a line to `BRANCHES` in `Code.gs`, for example `davao: {name: 'Davao Branch', id: '<sheet id>'}`.
