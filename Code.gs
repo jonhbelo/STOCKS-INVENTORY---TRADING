@@ -1,4 +1,4 @@
-/** RPI Inventory v1.7 - Google Apps Script web app (serves index.html + server API).
+/** RPI Inventory v1.8 - Google Apps Script web app (serves index.html + server API).
  *  Multi-branch: each branch (warehouse) has its own Google Sheet. The user list lives
  *  in the HOME branch sheet (ACCOUNTS tab) and is shared by all branches.
  *  Transfers between branches are written to the TRANSFERS tab of both sheets:
@@ -11,14 +11,14 @@ var BRANCHES = {
 };
 var HOME = 'manila';   // the sheet that holds ACCOUNTS
 /** Keep equal to VER in index.html. Pages left open on an older version see a "Reload" banner. */
-var APP_VER = '1.7';
+var APP_VER = '1.8';
 function appUrl(){ try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
-var W = {products:5, rr:10, dr:10, rs:8, cn:8, pending:10, ad:9, tf:10};
+var W = {products:5, rr:10, dr:10, rs:8, cn:8, pending:10, ad:9, tf:11};
 var TX = ['rr','dr','rs','cn','ad'];
 var DATA = ['products','rr','dr','rs','cn','pending','ad','tf'];
-/** TRANSFERS columns: id, no, date, dir (OUT or IN), branch (the other branch), code, qty, by, ts, note */
+/** TRANSFERS columns: id, no, date, dir (OUT or IN), branch (the other branch), code, qty, by, ts, note, client (optional, per item) */
 /** DR columns I and J: status ("VOID" when cancelled) and void_note. A void DR keeps its number but no longer reduces stock. */
-var TF_HEAD = ['id','no','date','dir','branch','code','qty','by','ts','note'];
+var TF_HEAD = ['id','no','date','dir','branch','code','qty','by','ts','note','client'];
 /** ACCOUNTS columns sent to the page: A-F plus I (branches). G-H (old password data) are never read. */
 var ACC_COLS = [1,2,3,4,5,6,9];
 
@@ -261,9 +261,9 @@ function go(q){
       var tts=new Date().getTime(), tid='tf_'+tts+'_'+Utilities.getUuid().slice(0,4), tno=String(q.no||'').trim(), note=String(q.note||'').trim();
       var outR=[], inR=[];
       items.forEach(function(it){
-        var code=src[String(it.code).trim().toUpperCase()].code, qty=Number(it.qty);
-        outR.push([tid,tno,tdt,'OUT',BRANCHES[to].name,code,qty,u.username,tts,note]);
-        inR.push([tid,tno,tdt,'IN',BRANCHES[b].name,code,qty,u.username,tts,note]);
+        var code=src[String(it.code).trim().toUpperCase()].code, qty=Number(it.qty), cli=String(it.client||'').trim().slice(0,120);
+        outR.push([tid,tno,tdt,'OUT',BRANCHES[to].name,code,qty,u.username,tts,note,cli]);
+        inR.push([tid,tno,tdt,'IN',BRANCHES[b].name,code,qty,u.username,tts,note,cli]);
       });
       stf.getRange(stf.getLastRow()+1,1,outR.length,W.tf).setValues(outR.map(function(r){return r.map(cell);}));
       dtf.getRange(dtf.getLastRow()+1,1,inR.length,W.tf).setValues(inR.map(function(r){return r.map(cell);}));

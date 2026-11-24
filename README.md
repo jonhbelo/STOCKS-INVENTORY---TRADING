@@ -2,7 +2,7 @@
 
 A web-based stock inventory system for **Rite Products, Inc.** trading warehouses. It runs as a **Google Apps Script web app** and uses **Google Sheets** as its database, with one sheet per branch.
 
-**Version:** 1.7 · **Branches:** Manila, Cebu
+**Version:** 1.8 · **Branches:** Manila, Cebu
 
 ## Features
 
