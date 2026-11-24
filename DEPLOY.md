@@ -25,8 +25,21 @@ The HTML file must be named exactly **`index`**, because `doGet()` loads it by t
 ## Updating later, keeping the same URL
 Users keep one link forever. Every update goes into the **same** deployment. Never use **Deploy → New deployment** for an update, because that creates a second deployment with a different link.
 
-### Automatic redeploy (set up once)
-After this setup, you only paste and save. The app redeploys itself to the same link.
+### Deploy from this PC, no pasting (recommended)
+The PRO folder is linked to the Apps Script project with Google's `clasp` tool (`.clasp.json` and `.claspignore`). Only `Code.gs`, `index.html` and `appsscript.json` are sent.
+
+- **One click:** double-click **`deploy.cmd`**. It uploads the three files, creates a new version on the existing deployment, and the link stays the same.
+- **Fully automatic:** double-click **`auto-deploy.cmd`** and leave its window open. Every time one of the three files is saved, it waits 15 seconds for saving to finish, then deploys. Close the window to stop.
+- **First time on another PC:**
+  1. Install Node.js.
+  2. Run `npm install -g @google/clasp`.
+  3. Run `clasp login` and sign in with the company account that owns the script.
+  4. Copy the PRO folder, including `.clasp.json`.
+
+`deploy.ps1` holds the web app's deployment ID. If you ever create a new deployment on purpose, update `$DeploymentId` there.
+
+### Automatic redeploy inside Apps Script (set up once)
+Use this when you edit code in the Apps Script editor itself. After this setup, you only save there, and the app redeploys itself to the same link. It compares the saved code with what the link runs, so it never repeats a deploy that `deploy.cmd` already made.
 
 1. Turn on the **Apps Script API** for your account at https://script.google.com/home/usersettings.
 2. In the editor, open **Project Settings** (gear icon) and tick **Show "appsscript.json" manifest file in editor**.

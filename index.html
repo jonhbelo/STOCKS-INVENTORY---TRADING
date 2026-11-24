@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>RPI Inventory System v1.6</title>
+<title>RPI Inventory System v1.7</title>
 <style>
 :root{--bg:#0d1017;--side:#131823;--card:#161b27;--tx:#f1f3f7;--mut:#8b93a5;--bd:#252b3a;--ac:#6b8cff;--ok:#34d399;--lo:#fbbf24;--neg:#f87171;--wm:.05;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
 :root[data-theme="light"]{--bg:#eef0f5;--side:#fff;--card:#fff;--tx:#161a24;--mut:#667085;--bd:#dde1ea;--ac:#3b5bdb;--ok:#059669;--lo:#b45309;--neg:#dc2626;--wm:.07;color-scheme:light}
@@ -176,7 +176,7 @@ body.nvo .scrim{display:block}
 <div id="whs" class="whs"></div>
 <div id="nav"></div>
 <div class="foot"><div class="r"><b>Central Database</b><span id="cs" class="g"></span></div>
-<div class="r s"><span>v1.6 · Google Sheets · Multi-Branch</span><span class="g" id="ms"></span></div></div>
+<div class="r s"><span>v1.7 · Google Sheets · Multi-Branch</span><span class="g" id="ms"></span></div></div>
 </aside>
 <div class="scrim" id="scrim"></div>
 <div class="main" id="main"></div>
@@ -184,7 +184,7 @@ body.nvo .scrim{display:block}
 <div id="acbox" class="acbox"></div>
 <datalist id="pl"></datalist>
 <script>
-const VER="1.6";
+const VER="1.7";
 const SURL="https://docs.google.com/spreadsheets/d/1l2tvgEsEHUN8--eFF3tT-MncJ2SKct6YZdyHN8cBoLs/edit";
 /* Served by Apps Script HtmlService: the server is reached through google.script.run, no URL needed. */
 const okApi=()=>true;
@@ -197,7 +197,7 @@ try{localStorage.removeItem("rpi_tok");localStorage.removeItem("rpi_api")}catch(
 /* Branch / warehouse: each has its own Google Sheet. The server decides which ones this user may open. */
 let wh="";try{wh=localStorage.getItem("rpi_wh")||""}catch(e){}
 const whName=()=>((user&&user.branches||[]).find(b=>b.id===wh)||{}).name||"";
-function switchWh(id){if(!id||id===wh)return;wh=id;document.body.classList.remove("nvo");try{localStorage.setItem("rpi_wh",wh)}catch(e){}menu=false;br="";q="";S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:S.accounts,ad:[],tf:[]};render();load().then(()=>{render();toast("Switched to "+whName()+".")}).catch(e=>toast(e.message))}
+function switchWh(id){if(!id||id===wh)return;wh=id;document.body.classList.remove("nvo");try{localStorage.setItem("rpi_wh",wh)}catch(e){}menu=false;br="";q="";if(BRC[id]){applyData(BRC[id]);toast("Switched to "+whName()+".");load().catch(()=>{});return}S={products:[],rr:[],dr:[],rs:[],cn:[],pending:[],accounts:S.accounts,ad:[],tf:[]};render();load().then(()=>{render();toast("Switched to "+whName()+".")}).catch(e=>toast(e.message))}
 const $=i=>document.getElementById(i),v=i=>{const e=$(i);return e?e.value.trim():""};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>new Date().toISOString().slice(0,10);
@@ -214,7 +214,12 @@ function showUpd(ver,url){if(!ver||ver===VER)return;let b=$("updbar");if(!b){b=d
 function verCheck(){if(!user)return;api("ver").then(r=>showUpd(r.ver,r.url)).catch(()=>{})}
 function applyData(r){if(r.me){user=r.me;showUpd(r.me.ver,r.me.url);if(r.me.branch&&r.me.branch!==wh){wh=r.me.branch;try{localStorage.setItem("rpi_wh",wh)}catch(e){}}}if(r.accounts)S.accounts=objs(r.accounts);if(r.pending)S.pending=objs(r.pending);for(const t of["rr","dr","rs","cn"])if(r[t])S[t]=grp(r[t]);if(r.ad)S.ad=grpAd(r.ad);if(r.tf)S.tf=grp(r.tf);
 if(r.products){S.products=objs(r.products).map(p=>({...p,opening:Number(p.opening)||0,min:p.min===""?0:Number(p.min)||0}));}render()}
-async function load(a){const w0=wh,r=await api("data",Array.isArray(a)?{only:a}:a===true?{fresh:1}:{});if(w0&&wh!==w0)return;/* branch switched meanwhile: drop stale data */applyData(r)}
+/* Per-branch copy of the last data received, so switching branches can show data at once. */
+const BRC={};
+const keepBr=(r,fallback)=>{const k=(r&&r.me&&r.me.branch)||fallback;if(k)BRC[k]=Object.assign(BRC[k]||{},r)};
+async function load(a){const w0=wh,r=await api("data",Array.isArray(a)?{only:a}:a===true?{fresh:1}:{});keepBr(r,w0);if(w0&&wh!==w0)return;/* branch switched meanwhile: drop stale data */applyData(r)}
+/* Fetch the other branches in the background after the app opens. */
+function prefetchBranches(){(user&&user.branches||[]).forEach(b=>{if(b.id!==wh&&!BRC[b.id])api("data",{br:b.id}).then(r=>keepBr(r,b.id)).catch(()=>{})})}
 const bgRun=(fn,only)=>{fn().then(()=>only&&load(only)).catch(e=>{toast("Not saved: "+e.message);load(true).catch(()=>{})})};
 const refreshRows=()=>{const b=$("rows");if(b)b.innerHTML=rows();else render()};
 function addLocalProduct(p){const np={...p,_row:S.products.length+2},i=S.products.map(x=>x.brand).lastIndexOf(p.brand);if(i<0)S.products.push(np);else S.products.splice(i+1,0,np)}
@@ -235,7 +240,7 @@ const txRows=(t,h,items,id,by)=>items.map(i=>HD[t].map(k=>k==="id"?id:k==="code"
 const prow=(type,docId,action,summary,extra,before,reason,st="pending",dec="")=>["p_"+Date.now()+Math.random().toString(36).slice(2,5),type,docId,JSON.stringify({summary:before||""}),JSON.stringify({action,summary,...extra}),reason||"",user.username,Date.now(),st,dec];
 /* ---------- identity: the company Google account, no passwords ---------- */
 function authV(){return'<div class="auth"><div class="ac"><div class="logo" style="margin-bottom:0"><svg viewBox="0 0 300 36.0"><use href="#lg"/></svg></div>'+(amsg?'<h2>Cannot open RPI Inventory</h2><p>'+esc(amsg)+'</p><button class="add" data-retry="1">Try again</button>':'<h2>Signing you in…</h2><p>Using your company Google account.</p>')+'</div></div>'}
-async function boot(){amsg="";render();const ov=startIntro();try{await load();ov.done();warm()}catch(e){ov.abort();user=null;amsg=e.message||"Something went wrong.";render()}}
+async function boot(){amsg="";render();const ov=startIntro();try{await load();ov.done();warm();setTimeout(prefetchBranches,1500)}catch(e){ov.abort();user=null;amsg=e.message||"Something went wrong.";render()}}
 function startIntro(){const o=document.createElement("div");o.className="intro";o.innerHTML='<div class="lc"><svg viewBox="0 0 300 36.0"><use href="#lg"/></svg></div><div class="ld">Loading stocks…</div>';document.body.appendChild(o);const t0=Date.now();
 return{done(){setTimeout(()=>{o.classList.add("out");setTimeout(()=>o.remove(),400)},Math.max(0,2300-(Date.now()-t0)))},abort(){o.remove()}}}
 function intro(){startIntro().done()}
@@ -280,7 +285,7 @@ function openGrp(a){const i=a.indexOf("~"),t=a.slice(0,i),key=decodeURIComponent
 g.docs.forEach(d=>{if(!isVoid(d))d.items.forEach(x=>tot[x.code]=(tot[x.code]||0)+x.qty)});
 openM(`<h3>${esc(g.ref||g.party||"Records")}</h3><p class="mut" style="margin:0 0 10px">${esc(g.party)} · ${g.docs.length} record${g.docs.length>1?"s":""} · ${esc(g.dates.join(", "))} · ${g.qty} total qty</p>
 <div class="card tb" style="margin-bottom:12px;max-height:190px"><table><thead><tr><th>Product code</th><th class="r">Total qty</th></tr></thead><tbody>${Object.keys(tot).sort().map(c=>`<tr><td>${esc(c)}</td><td class="r"><b>${tot[c]}</b></td></tr>`).join("")}</tbody></table></div>
-<div class="card tb" style="max-height:300px"><table><thead><tr><th>${B.r}</th><th>Date</th><th>Items</th><th>By</th><th class="r">Action</th></tr></thead><tbody>${g.docs.map(d=>`<tr><td>${esc(refOf(t,d))}</td><td class="dt">${esc(d.date)}</td><td class="wr">${isVoid(d)?`<span class="pill p-neg">VOID</span> <s class="mut">${d.items.map(x=>esc(x.code)+" × "+x.qty).join(", ")}</s>${d.void_note?`<br><span class="mut" style="font-size:12px">${esc(d.void_note)}</span>`:""}`:d.items.map(x=>esc(x.code)+" × "+x.qty).join(", ")}</td><td class="c">${esc(d.by)}</td><td class="r">${user.role==="viewer"||isVoid(d)?"":`<button class="ed" data-etx="${t}|${esc(d.id)}">✎ Edit</button> ${t==="dr"?`<button class="ed" data-vdx="${t}|${esc(d.id)}">⊘ Void</button> `:""}<button class="ed" data-dtx="${t}|${esc(d.id)}">🗑 Delete</button>`}</td></tr>`).join("")}</tbody></table></div>
+<div class="card tb" style="max-height:300px"><table><thead><tr><th>${B.r}</th><th>Date</th><th>Items</th><th>By</th><th class="r">Action</th></tr></thead><tbody>${g.docs.map(d=>`<tr><td>${esc(refOf(t,d))}</td><td class="dt">${esc(d.date)}</td><td class="wr">${isVoid(d)?`<span class="pill p-neg">VOID</span> <s class="mut">${d.items.map(x=>esc(x.code)+" × "+x.qty).join(", ")}</s>${d.void_note?`<br><span class="mut" style="font-size:12px">${esc(d.void_note)}</span>`:""}`:d.items.map(x=>esc(x.code)+" × "+x.qty).join(", ")}</td><td class="c">${esc(d.by)}</td><td class="r">${user.role==="viewer"||isVoid(d)?"":`<button class="ed" data-etx="${t}|${esc(d.id)}">✎ Edit</button> ${t==="dr"?`<button class="ed" data-vdx="${t}|${esc(d.id)}">⊘ Void</button> `:""}${t==="dr"?"":`<button class="ed" data-dtx="${t}|${esc(d.id)}">🗑 Delete</button>`}`}</td></tr>`).join("")}</tbody></table></div>
 <div class="a"><button class="ed" data-x="1">Close</button></div>`,true)}
 const IMP={stock:{n:"Stocks",h:["Brand","Product Code","UM","Beginning Balance","Low Stock Alert"],ex:[["BELIMO","D640N+SR230P-5","set",1,0],["SAMPLE BRAND","SAMPLE-CODE-001","pcs",10,0]],f:"RPI-Stocks-template.csv",info:"One row per product. Existing product codes are skipped, and each new product is placed with its brand."},
 rr:{n:"RR",h:["RR No","Date","Supplier","PO No","Type","Product Code","Qty"],ex:[["RR-001","2026-11-02","SAMPLE SUPPLIER","PO-100","Trading","PRODUCT-CODE-1",5],["RR-001","2026-11-02","SAMPLE SUPPLIER","PO-100","Trading","PRODUCT-CODE-2",10]],f:"RPI-RR-template.csv",hk:["no","date","supplier","po","type"]},

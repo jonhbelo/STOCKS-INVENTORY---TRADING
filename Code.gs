@@ -1,4 +1,4 @@
-/** RPI Inventory v1.6 - Google Apps Script web app (serves index.html + server API).
+/** RPI Inventory v1.7 - Google Apps Script web app (serves index.html + server API).
  *  Multi-branch: each branch (warehouse) has its own Google Sheet. The user list lives
  *  in the HOME branch sheet (ACCOUNTS tab) and is shared by all branches.
  *  Transfers between branches are written to the TRANSFERS tab of both sheets:
@@ -11,7 +11,7 @@ var BRANCHES = {
 };
 var HOME = 'manila';   // the sheet that holds ACCOUNTS
 /** Keep equal to VER in index.html. Pages left open on an older version see a "Reload" banner. */
-var APP_VER = '1.6';
+var APP_VER = '1.7';
 function appUrl(){ try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
 var W = {products:5, rr:10, dr:10, rs:8, cn:8, pending:10, ad:9, tf:10};
 var TX = ['rr','dr','rs','cn','ad'];
@@ -318,6 +318,7 @@ function go(q){
     if (a==='del' || a==='rep'){
       if (!adm) throw 'Admins only';
       if (TX.indexOf(q.s)<0) throw 'Bad sheet';
+      if (a==='del' && q.s==='dr') throw 'DRs cannot be deleted. Void the DR instead.';
       var s3=sh(q.s, b);
       if (a==='rep' && q.s==='dr'){ var dv=s3.getRange(1,1,Math.max(s3.getLastRow(),1),9).getValues(); for (var di=1;di<dv.length;di++) if (String(dv[di][0])===String(q.id) && String(dv[di][8]).toUpperCase()==='VOID') throw 'This DR is void and cannot be edited.'; }
       delId(s3,String(q.id));
@@ -367,8 +368,9 @@ function sapi_(method, path, body){
   }
   return j;
 }
-function codeHash_(){
-  var files = (sapi_('get', '/content').files || []).map(function(f){ return [f.name, f.type, f.source]; });
+/** Hash of the project's files: the saved code, or the code of one saved version. */
+function codeHash_(versionNumber){
+  var files = (sapi_('get', '/content' + (versionNumber ? '?versionNumber=' + versionNumber : '')).files || []).map(function(f){ return [f.name, f.type, f.source]; });
   files.sort(function(a, b){ return a[0] < b[0] ? -1 : 1; });
   return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(files), Utilities.Charset.UTF_8));
 }
@@ -385,11 +387,17 @@ function webDeploymentId_(){
   P.setProperty('DEPLOYMENT_ID', list[0].deploymentId);
   return list[0].deploymentId;
 }
+/** Version number the web app deployment currently runs. */
+function liveVersion_(id){
+  var d = sapi_('get', '/deployments/' + id);
+  return d.deploymentConfig && d.deploymentConfig.versionNumber;
+}
 function deployLatest(){
   ownerOnly_();
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
-    var hash = codeHash_(), id = webDeploymentId_();
+    var hash = codeHash_(), id = webDeploymentId_(), live = liveVersion_(id);
+    if (live && codeHash_(live) === hash) { Logger.log('Already up to date: the link runs version ' + live + '.'); return {version: live, deploymentId: id}; }
     var desc = 'v' + APP_VER + ' ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
     var ver = sapi_('post', '/versions', {description: desc}).versionNumber;
     sapi_('put', '/deployments/' + id, {deploymentConfig: {scriptId: ScriptApp.getScriptId(), versionNumber: ver, manifestFileName: 'appsscript', description: desc}});
@@ -401,8 +409,10 @@ function deployLatest(){
 }
 function autoDeployCheck(){
   ownerOnly_();
-  var P = PropertiesService.getScriptProperties(), hash = codeHash_();
-  if (hash === P.getProperty('DEPLOYED_HASH')) { P.deleteProperty('PENDING_HASH'); return; }
+  // Compare the saved code with what the link actually runs, so a deploy made elsewhere
+  // (for example deploy.cmd on the office PC) is not repeated.
+  var P = PropertiesService.getScriptProperties(), hash = codeHash_(), live = liveVersion_(webDeploymentId_());
+  if (live && codeHash_(live) === hash) { P.deleteProperty('PENDING_HASH'); return; }
   // Wait until the saved code has stopped changing for one check, so a half-pasted update is never deployed.
   if (hash !== P.getProperty('PENDING_HASH')) { P.setProperty('PENDING_HASH', hash); return; }
   deployLatest();
@@ -411,7 +421,6 @@ function autoDeployOn(){
   ownerOnly_();
   autoDeployOff();
   ScriptApp.newTrigger('autoDeployCheck').timeBased().everyMinutes(5).create();
-  PropertiesService.getScriptProperties().setProperty('DEPLOYED_HASH', codeHash_());
   Logger.log('Automatic redeploy is on. Saved code changes go live within about 10 minutes.');
 }
 function autoDeployOff(){
