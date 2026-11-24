@@ -7,6 +7,7 @@ Apps Script serves the whole app. The page calls the server through `google.scri
 |-------------------|--------------|---------------|
 | `Code.gs`         | `Code.gs`    | Script        |
 | `index`           | `index.html` | HTML (+ → HTML) |
+| `appsscript.json` | `appsscript.json` | Manifest (shown after **Project Settings → Show "appsscript.json" manifest file in editor**) |
 
 The HTML file must be named exactly **`index`**, because `doGet()` loads it by that name.
 
@@ -22,14 +23,33 @@ The HTML file must be named exactly **`index`**, because `doGet()` loads it by t
 7. Open the **Web app URL** that ends in `/exec`. The app opens straight away, already signed in as your company Google account.
 
 ## Updating later, keeping the same URL
-Users keep one link forever. Every update goes into the **same** deployment:
+Users keep one link forever. Every update goes into the **same** deployment. Never use **Deploy → New deployment** for an update, because that creates a second deployment with a different link.
 
+### Automatic redeploy (set up once)
+After this setup, you only paste and save. The app redeploys itself to the same link.
+
+1. Turn on the **Apps Script API** for your account at https://script.google.com/home/usersettings.
+2. In the editor, open **Project Settings** (gear icon) and tick **Show "appsscript.json" manifest file in editor**.
+3. Open `appsscript.json` and replace its contents with this folder's `appsscript.json`. If your old file had a different `timeZone`, keep yours.
+   - The `webapp` part keeps **Execute as: Me** and **Anyone within riteproducts.com.ph**.
+   - The `oauthScopes` list lets the script save versions and update its own deployment.
+4. Paste the new `Code.gs` and `index.html`, then click **Save**.
+5. Choose **`deployLatest`** in the function dropdown and click **Run**. Approve the new permissions. The log ends with "Deployed version … to the same link".
+6. Choose **`autoDeployOn`** and click **Run**. This starts a check every 5 minutes.
+
+From then on:
+- Paste the new files and click **Save**. Within about 10 minutes the new code is live on the same link. The script waits until the saved code has stopped changing for one check, so a half-finished paste is never deployed.
+- To deploy straight away instead, run **`deployLatest`**.
+- To stop automatic deploys, run **`autoDeployOff`**.
+- These functions only run for the script owner. A web app user can't trigger them.
+
+### Manual redeploy (without the setup above)
 1. Paste the new `Code.gs` and `index.html`, then click **Save**.
 2. Go to **Deploy → Manage deployments**. Click the pencil on your existing deployment, set **Version → New version**, then click **Deploy**.
 
-Never use **Deploy → New deployment** for an update. That creates a second deployment with a different link.
+### Pages already open
+Every open page checks the server's version once a minute. When it differs, a yellow bar appears at the top: "A new version of RPI Inventory is ready", with a **Reload now** button that reopens the same link. When you release a new version, raise both version numbers: `APP_VER` near the top of `Code.gs` and `VER` in `index.html`.
 
-**Pages already open:** within about 30 seconds (the auto-refresh), anyone with the app open sees a yellow banner: "A new version of RPI Inventory is ready", with a **Reload now** button. When you release a new version, raise both version numbers so the banner appears: `APP_VER` near the top of `Code.gs` and `VER` in `index.html`.
 (**Test deployments** gives a `/dev` URL that always runs the latest saved code. Only editors can use it.)
 
 ## Company-only access (@riteproducts.com.ph)

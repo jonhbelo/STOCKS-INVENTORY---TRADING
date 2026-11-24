@@ -2,7 +2,7 @@
 
 A web-based stock inventory system for **Rite Products, Inc.** trading warehouses. It runs as a **Google Apps Script web app** and uses **Google Sheets** as its database, with one sheet per branch.
 
-**Version:** 1.4 · **Branches:** Manila, Cebu
+**Version:** 1.6 · **Branches:** Manila, Cebu
 
 ## Features
 
@@ -39,6 +39,7 @@ A web-based stock inventory system for **Rite Products, Inc.** trading warehouse
 |---|---|
 | `Code.gs` | Apps Script server: serves the page, checks access, and reads/writes the branch sheets |
 | `index.html` | The whole web app (HTML, CSS and JavaScript in one file), loaded by `doGet()` |
+| `appsscript.json` | Apps Script manifest: web app settings and the permissions used for automatic redeploy |
 | `DEPLOY.md` | Step-by-step deployment and maintenance guide |
 
 ## Google Sheets layout

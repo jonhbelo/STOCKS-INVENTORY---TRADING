@@ -1,4 +1,4 @@
-/** RPI Inventory v1.4 - Google Apps Script web app (serves index.html + server API).
+/** RPI Inventory v1.6 - Google Apps Script web app (serves index.html + server API).
  *  Multi-branch: each branch (warehouse) has its own Google Sheet. The user list lives
  *  in the HOME branch sheet (ACCOUNTS tab) and is shared by all branches.
  *  Transfers between branches are written to the TRANSFERS tab of both sheets:
@@ -11,7 +11,7 @@ var BRANCHES = {
 };
 var HOME = 'manila';   // the sheet that holds ACCOUNTS
 /** Keep equal to VER in index.html. Pages left open on an older version see a "Reload" banner. */
-var APP_VER = '1.4';
+var APP_VER = '1.6';
 function appUrl(){ try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; } }
 var W = {products:5, rr:10, dr:10, rs:8, cn:8, pending:10, ad:9, tf:10};
 var TX = ['rr','dr','rs','cn','ad'];
@@ -160,6 +160,7 @@ function need(){
 /** ONE-TIME CLEANUP: run this once from the Apps Script editor (select it, click Run)
  *  to erase the old password salts and hashes (columns G and H of the ACCOUNTS tab). */
 function wipePasswordHashes(){
+  ownerOnly_();
   var s = sh('accounts'), l = s.getLastRow();
   if (l > 1) s.getRange(2, 7, l - 1, 2).clearContent();
   dirty('accounts');
@@ -185,6 +186,7 @@ function insProducts(s, rows){
 /* ---------- router ---------- */
 function go(q){
   var a = q.a, c = CacheService.getScriptCache(), lock = LockService.getScriptLock();
+  if (a==='ver') return {ver: APP_VER, url: appUrl()};
   if (a==='warm'){
     var wb = BRANCHES[q.br] ? q.br : HOME;
     DATA.concat('accounts').forEach(function(n){ try { rdc(n, wb); } catch (e) {} });
@@ -334,4 +336,86 @@ function go(q){
     }
     throw 'Unknown action';
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- redeploy to the latest code (owner only) ----------
+ * deployLatest():   run once from the editor after pasting new code. It saves a new version
+ *                   and points the existing web app deployment at it, so the link never changes.
+ * autoDeployOn():   checks every 5 minutes; when the saved code has changed and then stayed the
+ *                   same for one more check, it runs deployLatest() by itself.
+ * autoDeployOff():  stops the automatic checks.
+ * Needs: the Apps Script API turned on at https://script.google.com/home/usersettings, and the
+ * oauthScopes listed in appsscript.json (see DEPLOY.md). */
+function ownerOnly_(){
+  var me = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  var who = String(Session.getActiveUser().getEmail() || '').toLowerCase();
+  if (who && who !== me) throw 'Only the script owner can run this.';
+}
+function sapi_(method, path, body){
+  var r = UrlFetchApp.fetch('https://script.googleapis.com/v1/projects/' + ScriptApp.getScriptId() + path, {
+    method: method, contentType: 'application/json', muteHttpExceptions: true,
+    headers: {Authorization: 'Bearer ' + ScriptApp.getOAuthToken()},
+    payload: body ? JSON.stringify(body) : undefined
+  });
+  var code = r.getResponseCode(), txt = r.getContentText(), j = {};
+  try { j = JSON.parse(txt || '{}'); } catch (e) {}
+  if (code >= 300) {
+    var msg = (j.error && j.error.message) || txt;
+    if (/has not enabled the Apps Script API|not been used|disabled/i.test(msg))
+      msg += ' (Turn on the Apps Script API at https://script.google.com/home/usersettings, wait a minute, then run again.)';
+    throw 'Apps Script API error ' + code + ': ' + msg;
+  }
+  return j;
+}
+function codeHash_(){
+  var files = (sapi_('get', '/content').files || []).map(function(f){ return [f.name, f.type, f.source]; });
+  files.sort(function(a, b){ return a[0] < b[0] ? -1 : 1; });
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(files), Utilities.Charset.UTF_8));
+}
+/** The web app deployment users open. Saved in Script Properties after the first run. */
+function webDeploymentId_(){
+  var P = PropertiesService.getScriptProperties(), saved = P.getProperty('DEPLOYMENT_ID');
+  var list = (sapi_('get', '/deployments?pageSize=50').deployments || []).filter(function(d){
+    return d.deploymentConfig && d.deploymentConfig.versionNumber &&
+      (d.entryPoints || []).some(function(e){ return e.entryPointType === 'WEB_APP'; });
+  });
+  if (saved && list.some(function(d){ return d.deploymentId === saved; })) return saved;
+  if (!list.length) throw 'No web app deployment found. Create one first with Deploy > New deployment > Web app.';
+  list.sort(function(a, b){ return String(b.updateTime).localeCompare(String(a.updateTime)); });
+  P.setProperty('DEPLOYMENT_ID', list[0].deploymentId);
+  return list[0].deploymentId;
+}
+function deployLatest(){
+  ownerOnly_();
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var hash = codeHash_(), id = webDeploymentId_();
+    var desc = 'v' + APP_VER + ' ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    var ver = sapi_('post', '/versions', {description: desc}).versionNumber;
+    sapi_('put', '/deployments/' + id, {deploymentConfig: {scriptId: ScriptApp.getScriptId(), versionNumber: ver, manifestFileName: 'appsscript', description: desc}});
+    var P = PropertiesService.getScriptProperties();
+    P.setProperty('DEPLOYED_HASH', hash); P.deleteProperty('PENDING_HASH');
+    Logger.log('Deployed version ' + ver + ' (' + desc + ') to the same link: ' + appUrl());
+    return {version: ver, deploymentId: id};
+  } finally { lock.releaseLock(); }
+}
+function autoDeployCheck(){
+  ownerOnly_();
+  var P = PropertiesService.getScriptProperties(), hash = codeHash_();
+  if (hash === P.getProperty('DEPLOYED_HASH')) { P.deleteProperty('PENDING_HASH'); return; }
+  // Wait until the saved code has stopped changing for one check, so a half-pasted update is never deployed.
+  if (hash !== P.getProperty('PENDING_HASH')) { P.setProperty('PENDING_HASH', hash); return; }
+  deployLatest();
+}
+function autoDeployOn(){
+  ownerOnly_();
+  autoDeployOff();
+  ScriptApp.newTrigger('autoDeployCheck').timeBased().everyMinutes(5).create();
+  PropertiesService.getScriptProperties().setProperty('DEPLOYED_HASH', codeHash_());
+  Logger.log('Automatic redeploy is on. Saved code changes go live within about 10 minutes.');
+}
+function autoDeployOff(){
+  ownerOnly_();
+  ScriptApp.getProjectTriggers().forEach(function(t){ if (t.getHandlerFunction() === 'autoDeployCheck') ScriptApp.deleteTrigger(t); });
+  Logger.log('Automatic redeploy is off.');
 }
